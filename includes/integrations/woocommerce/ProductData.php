@@ -80,12 +80,14 @@ class ProductData
         global $post;
 
         /** @var GeneratorResourceModel[] $generators */
-        $generators        = GeneratorResourceRepository::instance()->findAll();
-        $licensed          = get_post_meta($post->ID, 'lmfwc_licensed_product',                    true);
-        $deliveredQuantity = get_post_meta($post->ID, 'lmfwc_licensed_product_delivered_quantity', true);
-        $generatorId       = get_post_meta($post->ID, 'lmfwc_licensed_product_assigned_generator', true);
-        $useGenerator      = get_post_meta($post->ID, 'lmfwc_licensed_product_use_generator',      true);
-        $useStock          = get_post_meta($post->ID, 'lmfwc_licensed_product_use_stock',          true);
+        $generators           = GeneratorResourceRepository::instance()->findAll();
+        $licensed             = get_post_meta($post->ID, 'lmfwc_licensed_product',                           true);
+        $deliveredQuantity    = get_post_meta($post->ID, 'lmfwc_licensed_product_delivered_quantity',        true);
+        $generatorId          = get_post_meta($post->ID, 'lmfwc_licensed_product_assigned_generator',        true);
+        $useGenerator         = get_post_meta($post->ID, 'lmfwc_licensed_product_use_generator',             true);
+        $useStock             = get_post_meta($post->ID, 'lmfwc_licensed_product_use_stock',                 true);
+        $notifyLowStock       = get_post_meta($post->ID, 'lmfwc_licensed_product_notify_low_stock',          true);
+        $notifyLowStockAmount = get_post_meta($post->ID, 'lmfwc_licensed_product_notify_low_stock_amount',   true);
         $generatorOptions  = array('' => __('Please select a generator', 'license-manager-for-woocommerce'));
 
         if ($generators) {
@@ -183,6 +185,33 @@ class ProductData
             __('License key(s) in stock and available for sale', 'license-manager-for-woocommerce')
         );
 
+        // Checkbox "lmfwc_licensed_product_notify_low_stock"
+        woocommerce_wp_checkbox(
+            array(
+                'id'          => 'lmfwc_licensed_product_notify_low_stock',
+                'label'       => __('Notification', 'license-manager-for-woocommerce'),
+                'description' => __('Enable low stock notifications', 'license-manager-for-woocommerce'),
+                'value'       => $notifyLowStock,
+                'cbvalue'     => 1,
+                'desc_tip'    => false
+            )
+        );
+
+        // Number "lmfwc_licensed_product_notify_low_stock_amount"
+        woocommerce_wp_text_input(
+            array(
+                'id'                => 'lmfwc_licensed_product_notify_low_stock_amount',
+                'label'             => __('Low stock threshold', 'license-manager-for-woocommerce'),
+                'value'             => $notifyLowStockAmount ? $notifyLowStockAmount : 1,
+                'description'       => __('When product stock reaches this amount you will be notified via email.', 'license-manager-for-woocommerce'),
+                'type'              => 'number',
+                'custom_attributes' => array(
+                    'step' => 'any',
+                    'min'  => '1'
+                )
+            )
+        );
+
         do_action('lmfwc_product_data_panel', $post);
 
         echo '</div></div>';
@@ -245,6 +274,24 @@ class ProductData
         else {
             update_post_meta($postId, 'lmfwc_licensed_product_use_stock', 0);
         }
+
+        // Update the low stock flag, according to checkbox.
+        if (array_key_exists('lmfwc_licensed_product_notify_low_stock', $_POST)) {
+            update_post_meta($postId, 'lmfwc_licensed_product_notify_low_stock', 1);
+        }
+
+        else {
+            update_post_meta($postId, 'lmfwc_licensed_product_notify_low_stock', 0);
+        }
+
+        // Update low stock amount quantity, according to field.
+        $notifyLowStockAmount = absint($_POST['lmfwc_licensed_product_notify_low_stock_amount']);
+
+        update_post_meta(
+            $postId,
+            'lmfwc_licensed_product_notify_low_stock_amount',
+            $notifyLowStockAmount ? $notifyLowStockAmount : 1
+        );
 
         // Update the assigned generator id, according to select field.
         update_post_meta(
