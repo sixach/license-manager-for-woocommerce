@@ -5,6 +5,8 @@ namespace LicenseManagerForWooCommerce\Integrations\WooCommerce;
 use LicenseManagerForWooCommerce\Integrations\WooCommerce\Emails\CustomerDeliverLicenseKeys;
 use LicenseManagerForWooCommerce\Integrations\WooCommerce\Emails\CustomerPreorderComplete;
 use LicenseManagerForWooCommerce\Integrations\WooCommerce\Emails\Templates;
+use LicenseManagerForWooCommerce\Enums\LicenseStatus;
+use LicenseManagerForWooCommerce\Repositories\Resources\License as LicenseResourceRepository;
 use LicenseManagerForWooCommerce\Settings;
 use WC_Email;
 use WC_Order;
@@ -19,6 +21,7 @@ class Email
     public function __construct() {
         add_action('woocommerce_email_after_order_table', array($this, 'afterOrderTable'), 10, 4);
         add_action('woocommerce_email_classes',           array($this, 'registerClasses'), 90, 1);
+        add_action('woocommerce_reduce_order_stock',      array($this, 'lowStockEmail'),   10, 1);
     }
 
     /**
@@ -128,5 +131,62 @@ class Email
         );
 
         return array_merge($emails, $pluginEmails);
+    }
+
+    /**
+     * Low stock notification email.
+     *
+     * @param WC_Order $order
+     *
+     * @return void
+     */
+    public function lowStockEmail($order) {
+
+        if (! $order instanceof WC_Order) {
+            return;
+        }
+
+        $products = $order->get_items();
+
+        foreach($products as $item) {
+            $product = $item->get_product();
+
+            if ( ! $product ) {
+                continue;
+            }
+
+            $isActive = $product->get_meta('lmfwc_licensed_product_notify_low_stock', true);
+
+            // Bail early, in case the notification is disabled.
+            if (!$isActive) {
+                continue;
+            }
+
+            $threshold   = (int) $product->get_meta('lmfwc_licensed_product_notify_low_stock_amount', true);
+            $stockAmount = (int) LicenseResourceRepository::instance()->countBy(array('product_id' => $product->get_id(), 'status' => LicenseStatus::ACTIVE));
+
+            // Bail early, in case we have enough license key in stock.
+            if ( $stockAmount > $threshold ) {
+                continue;
+            }
+
+            $header  = sprintf( 'From: %s <%s>', wp_specialchars_decode(get_option('woocommerce_email_from_name'), ENT_QUOTES), sanitize_email(get_option('woocommerce_email_from_address')));
+            $subject = sprintf( '[%s] %s', wp_specialchars_decode(get_option('blogname'), ENT_QUOTES), __('License low in stock', 'license-manager-for-woocommerce'));
+            $message = sprintf(
+                /* translators: 1: product name 2: items in stock */
+                __('%1$s is low in license stock. There are %2$d left.', 'license-manager-for-woocommerce'),
+                html_entity_decode(wp_strip_all_tags($product->get_formatted_name()), ENT_QUOTES, get_bloginfo('charset')),
+                html_entity_decode(wp_strip_all_tags($stockAmount))
+            );
+
+            wp_mail(
+                apply_filters('lmfwc_email_recipient_low_stock', get_option('woocommerce_stock_email_recipient'), $product, null),
+                apply_filters('lmfwc_email_subject_low_stock', $subject, $product, null),
+                apply_filters('lmfwc_email_content_low_stock', $message, $product),
+                apply_filters('lmfwc_email_headers_low_stock', $header, 'low_stock', $product, null),
+                apply_filters('lmfwc_email_attachments_low_stock', array(), 'low_stock', $product, null)
+            );
+        }
+
     }
 }
